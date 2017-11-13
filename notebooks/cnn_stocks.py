@@ -51,14 +51,14 @@ def cnn_model_fn(features, labels, mode):
   print(conv3)
 
   # Pooling Layer #3
-  pool3 = tf.layers.max_pooling2d(inputs=conv3, pool_size=[1, 5], strides=[1,5])
+  pool3 = tf.layers.max_pooling2d(inputs=conv3, pool_size=[1, 2], strides=[1, 2])
   print(pool3)
 
   # Dense Layer
-  pool3_flat = tf.reshape(pool3, [-1, 154 * 2 * 2])
+  pool3_flat = tf.reshape(pool3, [-1, 154 * 5 * 2])
   print(pool3_flat)
 
-  dense = tf.layers.dense(inputs=pool3_flat, units=1024, activation=tf.nn.relu)
+  dense = tf.layers.dense(inputs=pool3_flat, units=512, activation=tf.nn.relu)
   print(dense)
 
   dropout = tf.layers.dropout(
