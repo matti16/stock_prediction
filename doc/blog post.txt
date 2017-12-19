@@ -1,0 +1,175 @@
+- Summary
+- Dataset creation
+- CNN with TensorFlow
+- Evaluation
+
+CNN for Short-Term Stocks Prediction using Tensorflow
+
+
+<h1>Summary</h1>
+In machine learning, a convolutional neural network (CNN, or ConvNet) is a class of neural networks that has successfully been applied to image recognition and analysis. In this project I've approached this class of models trying to apply it to stock market prediction, combining stock prices with sentiment analysis. The implementation of the network has been made using TensorFlow, starting from the online tutorial. I will describe the following steps: dataset creation, CNN training and evaluation of the model.
+
+
+<h1>Dataset</h1>
+
+<h3>Ticks</h3>
+In order to build a dataset, I first chose a sector and I time period to focus on. I decided to pick up the Healthcare sector, without any particular reason, and the time range between 4th January 2016 and 30th September 2017, to be further splitted in training set and evaluation set. In particular, the list of ticks was downloaded from <a href=http://www.nasdaq.com/screening/companies-by-industry.aspx?industry=Health+Care> nasdaq.com </a>, keeping only companies with Mega, Large or Mid capitalization.
+Starting from this list of ticks, stocks and news data were retrived using Google Finance and Intrinio API respectively.
+
+<h3>Stocks Data</h3>
+As already mentioned before, stocks data has been retrieved from Google Finance historical API ("https://finance.google.com/finance/historical?q={tick}&startdate={startdate}&output=csv", for each tick in the list). 
+The time unit is the day and the value I kept is the Close price of the stocks. For training purposes, missing days have been filled using linear interpolation (pandas.DataFrame.interpolate):
+
+<h3>News Data</h3>
+In order to retrieve news data, I used the API from <a href="https://intrinio.com/"> intrinio </a>. For each tick, I downloaded the related news at https://api.intrinio.com/news.csv?ticker={tick}, the data are in csv format with the following columns:
+TICKER,FIGI_TICKER,FIGI,TITLE,PUBLICATION_DATE,URL,SUMMARY and an entry could be for example
+
+"AAAP,AAAP:UW,BBG007K5CV53,"3 Stocks to Watch on Thursday: Advanced Accelerator Application SA(ADR) (AAAP), Jabil Inc (JBL) and Medtronic Plc. (MDT)",2017-09-28 15:45:56 +0000,http://articlefeeds.nasdaq.com/~r/nasdaq/symbols/~3/ywZ6I5j5mIE/3-stocks-to-watch-on-thursday-advanced-accelerator-application-saadr-aaap-jabil-inc-jbl-and-medtronic-plc-mdt-cm852684,InvestorPlace Stock Market News Stock Advice amp Trading Tips Most major U S indices rose Wednesday with financial stocks leading the way popping 1 3 The 160 S amp P 500 Index gained 0 4 the 160 Dow Jones Industrial Average surged 0 3 and the 160".
+
+Since there were duplicates, the news have been deduplicated based on the title. Finally, I kept the TICKER, PUBLICATION_DATE and SUMMARY columns. 
+
+<b>Sentiment Analysis</b> was performed on the SUMMARY column using <b>Loughran and McDonald Financial Sentiment Dictionary</b> for financial sentiment analysis, implemented in the <a href="https://pypi.python.org/pypi/pysentiment"> pysentiment </a> python library.
+
+This library offers both a tokenizer, that performs stemming and stop words removal, and a method to score a tokenized text.
+The value chosen from the get_score method as a proxy of the sentiment for the news is the <b>Polarity</b>, computed as 
+(#Positives - #Negatives)/(#Positives + #Negatives)
+
+<div style="background: #ffffff; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%"><span style="color: #008800; font-weight: bold">import</span> <span style="color: #0e84b5; font-weight: bold">pysentiment</span> <span style="color: #008800; font-weight: bold">as</span> <span style="color: #0e84b5; font-weight: bold">ps</span>
+
+lm <span style="color: #333333">=</span> ps<span style="color: #333333">.</span>LM()
+df_news[<span style="background-color: #fff0f0">&quot;SUMMARY_SCORES&quot;</span>] <span style="color: #333333">=</span> df_news<span style="color: #333333">.</span>SUMMARY<span style="color: #333333">.</span>map(<span style="color: #008800; font-weight: bold">lambda</span> x: lm<span style="color: #333333">.</span>get_score(lm<span style="color: #333333">.</span>tokenize(<span style="color: #007020">str</span>(x))))
+df_news[<span style="background-color: #fff0f0">&#39;POLARITY&#39;</span>] <span style="color: #333333">=</span> df_news[<span style="background-color: #fff0f0">&#39;SUMMARY_SCORES&#39;</span>]<span style="color: #333333">.</span>map(<span style="color: #008800; font-weight: bold">lambda</span> x: x[<span style="background-color: #fff0f0">&#39;Polarity&#39;</span>])
+</pre></div>
+
+The days in which there are no news are filled with 0s for Polarity.
+Finally, data was groupped by tick and date, summing up the Polarity score for days in which a tick has more than one news.
+
+
+<h3>Full Dataset</h3>
+By merging stocks and news data, we get a dataset as follows, with all the days from 2016-01-04 to 2017-09-30 for each tick with the close value of the stock and the respective polarity value:
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Date</th>
+      <th>Tick</th>
+      <th>Close</th>
+      <th>Polarity</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>2017-09-26</td>
+      <td>ALXN</td>
+      <td>139.700000</td>
+      <td>2.333332</td>
+    </tr>
+    <tr>
+      <td>2017-09-27</td>
+      <td>ALXN</td>
+      <td>139.450000</td>
+      <td>3.599997</td>
+    </tr>
+    <tr>
+      <td>2017-09-28</td>
+      <td>ALXN</td>
+      <td>138.340000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>2017-09-29</td>
+      <td>ALXN</td>
+      <td>140.290000</td>
+      <td>-0.999999</td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+<h1>CNN with TensorFlow</h1>
+
+<h3>Input</h3>
+
+<h3>Convolutional Neural Network</h3>
+
+<div style="background: #272822; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%"><span style="color: #66d9ef">def</span> <span style="color: #a6e22e">cnn_model_fn</span><span style="color: #f8f8f2">(features,</span> <span style="color: #f8f8f2">labels,</span> <span style="color: #f8f8f2">mode):</span>
+  <span style="color: #e6db74">&quot;&quot;&quot;Model function for CNN.&quot;&quot;&quot;</span>
+  <span style="color: #75715e"># Input Layer</span>
+  <span style="color: #f8f8f2">input_layer</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">reshape(tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">cast(features[</span><span style="color: #e6db74">&quot;x&quot;</span><span style="color: #f8f8f2">],</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">float32),</span> <span style="color: #f8f8f2">[</span><span style="color: #f92672">-</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">154</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">100</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">2</span><span style="color: #f8f8f2">])</span>
+
+  <span style="color: #75715e"># Convolutional Layer #1</span>
+  <span style="color: #f8f8f2">conv1</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">conv2d(</span>
+      <span style="color: #f8f8f2">inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">input_layer,</span>
+      <span style="color: #f8f8f2">filters</span><span style="color: #f92672">=</span><span style="color: #ae81ff">32</span><span style="color: #f8f8f2">,</span>
+      <span style="color: #f8f8f2">kernel_size</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">5</span><span style="color: #f8f8f2">],</span>
+      <span style="color: #f8f8f2">padding</span><span style="color: #f92672">=</span><span style="color: #e6db74">&quot;same&quot;</span><span style="color: #f8f8f2">,</span>
+      <span style="color: #f8f8f2">activation</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">nn</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">relu)</span>
+
+  <span style="color: #75715e"># Pooling Layer #1</span>
+  <span style="color: #f8f8f2">pool1</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">max_pooling2d(inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">conv1,</span> <span style="color: #f8f8f2">pool_size</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">2</span><span style="color: #f8f8f2">],</span> <span style="color: #f8f8f2">strides</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span><span style="color: #ae81ff">2</span><span style="color: #f8f8f2">])</span>
+
+  <span style="color: #75715e"># Convolutional Layer #2</span>
+  <span style="color: #f8f8f2">conv2</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">conv2d(</span>
+      <span style="color: #f8f8f2">inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">pool1,</span>
+      <span style="color: #f8f8f2">filters</span><span style="color: #f92672">=</span><span style="color: #ae81ff">8</span><span style="color: #f8f8f2">,</span>
+      <span style="color: #f8f8f2">kernel_size</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">5</span><span style="color: #f8f8f2">],</span>
+      <span style="color: #f8f8f2">padding</span><span style="color: #f92672">=</span><span style="color: #e6db74">&quot;same&quot;</span><span style="color: #f8f8f2">,</span>
+      <span style="color: #f8f8f2">activation</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">nn</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">relu)</span>
+
+  <span style="color: #75715e"># Pooling Layer #2</span>
+  <span style="color: #f8f8f2">pool2</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">max_pooling2d(inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">conv2,</span> <span style="color: #f8f8f2">pool_size</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">5</span><span style="color: #f8f8f2">],</span> <span style="color: #f8f8f2">strides</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span><span style="color: #ae81ff">5</span><span style="color: #f8f8f2">])</span>
+
+  <span style="color: #75715e"># Convolutional Layer #3</span>
+  <span style="color: #f8f8f2">conv3</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">conv2d(</span>
+    <span style="color: #f8f8f2">inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">pool2,</span>
+    <span style="color: #f8f8f2">filters</span><span style="color: #f92672">=</span><span style="color: #ae81ff">2</span><span style="color: #f8f8f2">,</span>
+    <span style="color: #f8f8f2">kernel_size</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">154</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">5</span><span style="color: #f8f8f2">],</span>
+    <span style="color: #f8f8f2">padding</span><span style="color: #f92672">=</span><span style="color: #e6db74">&quot;same&quot;</span><span style="color: #f8f8f2">,</span>
+    <span style="color: #f8f8f2">activation</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">nn</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">relu)</span>
+
+  <span style="color: #75715e"># Pooling Layer #3</span>
+  <span style="color: #f8f8f2">pool3</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">max_pooling2d(inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">conv3,</span> <span style="color: #f8f8f2">pool_size</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">2</span><span style="color: #f8f8f2">],</span> <span style="color: #f8f8f2">strides</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">[</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">2</span><span style="color: #f8f8f2">])</span>
+
+  <span style="color: #75715e"># Dense Layer</span>
+  <span style="color: #f8f8f2">pool3_flat</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">reshape(pool3,</span> <span style="color: #f8f8f2">[</span><span style="color: #f92672">-</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">154</span> <span style="color: #f92672">*</span> <span style="color: #ae81ff">5</span> <span style="color: #f92672">*</span> <span style="color: #ae81ff">2</span><span style="color: #f8f8f2">])</span>
+
+  <span style="color: #f8f8f2">dense</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">dense(inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">pool3_flat,</span> <span style="color: #f8f8f2">units</span><span style="color: #f92672">=</span><span style="color: #ae81ff">512</span><span style="color: #f8f8f2">,</span> <span style="color: #f8f8f2">activation</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">nn</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">relu)</span>
+
+  <span style="color: #f8f8f2">dropout</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">dropout(</span>
+      <span style="color: #f8f8f2">inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">dense,</span> <span style="color: #f8f8f2">rate</span><span style="color: #f92672">=</span><span style="color: #ae81ff">0.4</span><span style="color: #f8f8f2">,</span> <span style="color: #f8f8f2">training</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">mode</span> <span style="color: #f92672">==</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">estimator</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">ModeKeys</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">TRAIN)</span>
+
+  <span style="color: #75715e"># Logits Layer</span>
+  <span style="color: #f8f8f2">logits</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">layers</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">dense(inputs</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">dropout,</span> <span style="color: #f8f8f2">units</span><span style="color: #f92672">=</span><span style="color: #ae81ff">154</span><span style="color: #f8f8f2">)</span>
+
+  <span style="color: #f8f8f2">predictions</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">{</span>
+      <span style="color: #75715e"># Generate predictions (for PREDICT and EVAL mode)</span>
+      <span style="color: #e6db74">&quot;classes&quot;</span><span style="color: #f8f8f2">:</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">argmax(input</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">logits,</span> <span style="color: #f8f8f2">axis</span><span style="color: #f92672">=</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">),</span>
+      <span style="color: #75715e"># Add `softmax_tensor` to the graph. It is used for PREDICT and by the</span>
+      <span style="color: #75715e"># `logging_hook`.</span>
+      <span style="color: #e6db74">&quot;probabilities&quot;</span><span style="color: #f8f8f2">:</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">nn</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">softmax(logits,</span> <span style="color: #f8f8f2">name</span><span style="color: #f92672">=</span><span style="color: #e6db74">&quot;softmax_tensor&quot;</span><span style="color: #f8f8f2">)</span>
+  <span style="color: #f8f8f2">}</span>
+
+  <span style="color: #66d9ef">if</span> <span style="color: #f8f8f2">mode</span> <span style="color: #f92672">==</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">estimator</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">ModeKeys</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">PREDICT:</span>
+    <span style="color: #66d9ef">return</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">estimator</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">EstimatorSpec(mode</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">mode,</span> <span style="color: #f8f8f2">predictions</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">predictions)</span>
+
+  <span style="color: #75715e"># Calculate Loss (for both TRAIN and EVAL modes)</span>
+  <span style="color: #f8f8f2">multiclass_labels</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">reshape(tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">cast(labels,</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">int32),</span> <span style="color: #f8f8f2">[</span><span style="color: #f92672">-</span><span style="color: #ae81ff">1</span><span style="color: #f8f8f2">,</span> <span style="color: #ae81ff">154</span><span style="color: #f8f8f2">])</span>
+  <span style="color: #f8f8f2">loss</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">losses</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">sigmoid_cross_entropy(</span>
+      <span style="color: #f8f8f2">multi_class_labels</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">multiclass_labels,</span> <span style="color: #f8f8f2">logits</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">logits)</span>
+
+  <span style="color: #75715e"># Configure the Training Op (for TRAIN mode)</span>
+  <span style="color: #66d9ef">if</span> <span style="color: #f8f8f2">mode</span> <span style="color: #f92672">==</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">estimator</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">ModeKeys</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">TRAIN:</span>
+    <span style="color: #f8f8f2">optimizer</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">train</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">GradientDescentOptimizer(learning_rate</span><span style="color: #f92672">=</span><span style="color: #ae81ff">0.001</span><span style="color: #f8f8f2">)</span>
+    <span style="color: #f8f8f2">train_op</span> <span style="color: #f92672">=</span> <span style="color: #f8f8f2">optimizer</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">minimize(</span>
+        <span style="color: #f8f8f2">loss</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">loss,</span>
+        <span style="color: #f8f8f2">global_step</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">train</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">get_global_step())</span>
+    <span style="color: #66d9ef">return</span> <span style="color: #f8f8f2">tf</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">estimator</span><span style="color: #f92672">.</span><span style="color: #f8f8f2">EstimatorSpec(mode</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">mode,</span> <span style="color: #f8f8f2">loss</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">loss,</span> <span style="color: #f8f8f2">train_op</span><span style="color: #f92672">=</span><span style="color: #f8f8f2">train_op)</span>
+</pre></div>
+
+
+
+
+
+
+
